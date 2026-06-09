@@ -65,30 +65,37 @@ app.get('/api/diagnose', async (req, res) => {
         // Ocultamos la mayor parte del key por seguridad (mostramos los últimos 4 caracteres)
         const maskedKey = apiKey.length > 8 ? `...${apiKey.slice(-4)}` : 'Muy corta o inválida';
 
-        const https = require('https');
-        https.get(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`, (apiRes) => {
-            let data = '';
-            apiRes.on('data', (chunk) => { data += chunk; });
-            apiRes.on('end', () => {
-                try {
-                    const parsed = JSON.parse(data);
-                    res.json({
-                        success: apiRes.statusCode === 200,
-                        statusCode: apiRes.statusCode,
-                        maskedKey,
-                        response: parsed
-                    });
-                } catch (e) {
-                    res.json({
-                        success: false,
-                        statusCode: apiRes.statusCode,
-                        maskedKey,
-                        rawResponse: data
-                    });
-                }
-            });
-        }).on('error', (err) => {
-            res.status(500).json({ error: err.message, maskedKey });
+        const { GoogleGenerativeAI } = require("@google/generative-ai");
+        const genAI = new GoogleGenerativeAI(apiKey);
+        
+        const modelsToTest = [
+            "gemini-1.5-flash",
+            "gemini-2.0-flash",
+            "gemini-2.0-flash-lite",
+            "gemini-2.5-flash",
+            "gemini-3.5-flash"
+        ];
+        
+        const testResults = {};
+        for (const modelName of modelsToTest) {
+            try {
+                const model = genAI.getGenerativeModel({ model: modelName });
+                const result = await model.generateContent("Hola");
+                testResults[modelName] = {
+                    success: true,
+                    reply: result.response.text().trim()
+                };
+            } catch (err) {
+                testResults[modelName] = {
+                    success: false,
+                    error: err.message
+                };
+            }
+        }
+
+        res.json({
+            maskedKey,
+            testResults
         });
     } catch (error) {
         res.status(500).json({ error: error.message });
