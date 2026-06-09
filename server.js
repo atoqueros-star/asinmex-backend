@@ -52,6 +52,49 @@ app.post('/api/chat', async (req, res) => {
     }
 });
 
+// Ruta de diagnóstico para verificar el estado de la API Key de Google
+app.get('/api/diagnose', async (req, res) => {
+    try {
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) {
+            return res.status(500).json({ 
+                error: 'GEMINI_API_KEY no está configurada en las variables de entorno de Render.' 
+            });
+        }
+        
+        // Ocultamos la mayor parte del key por seguridad (mostramos los últimos 4 caracteres)
+        const maskedKey = apiKey.length > 8 ? `...${apiKey.slice(-4)}` : 'Muy corta o inválida';
+
+        const https = require('https');
+        https.get(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`, (apiRes) => {
+            let data = '';
+            apiRes.on('data', (chunk) => { data += chunk; });
+            apiRes.on('end', () => {
+                try {
+                    const parsed = JSON.parse(data);
+                    res.json({
+                        success: apiRes.statusCode === 200,
+                        statusCode: apiRes.statusCode,
+                        maskedKey,
+                        response: parsed
+                    });
+                } catch (e) {
+                    res.json({
+                        success: false,
+                        statusCode: apiRes.statusCode,
+                        maskedKey,
+                        rawResponse: data
+                    });
+                }
+            });
+        }).on('error', (err) => {
+            res.status(500).json({ error: err.message, maskedKey });
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
 app.listen(PORT, () => {
     console.log(`🚀 Servidor de ASINMEX Chatbot corriendo en el puerto ${PORT}`);
 });
