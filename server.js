@@ -25,6 +25,11 @@ app.post('/api/chat', async (req, res) => {
         return res.status(400).json({ error: 'Faltan parámetros requeridos: sessionId y message' });
     }
 
+    // Prevención de abuso de carga (Payload Abuse)
+    if (typeof message !== 'string' || message.length > 1000) {
+        return res.status(400).json({ error: 'El mensaje excede el tamaño máximo permitido de 1000 caracteres.' });
+    }
+
     try {
         // Procesamos el mensaje con la IA
         let reply = await processChatMessage(sessionId, message);
@@ -58,6 +63,21 @@ app.post('/api/export', async (req, res) => {
 
     if (!email || !history || !Array.isArray(history)) {
         return res.status(400).json({ error: 'Faltan parámetros requeridos: email y history (debe ser un arreglo)' });
+    }
+
+    // Prevención de abuso de carga (Payload Abuse)
+    if (typeof email !== 'string' || email.length > 254) {
+        return res.status(400).json({ error: 'El correo electrónico excede el tamaño máximo permitido.' });
+    }
+
+    if (history.length > 50) {
+        return res.status(400).json({ error: 'El historial excede la cantidad máxima permitida de 50 mensajes.' });
+    }
+
+    for (const msg of history) {
+        if (!msg || typeof msg.text !== 'string' || msg.text.length > 1000) {
+            return res.status(400).json({ error: 'Uno o más mensajes del historial exceden el tamaño máximo permitido de 1000 caracteres.' });
+        }
     }
 
     try {
