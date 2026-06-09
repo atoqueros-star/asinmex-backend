@@ -68,7 +68,7 @@ async function processChatMessage(sessionId, message) {
         return responseText;
     } catch (error) {
         console.error("Error en Gemini API:", error);
-        return "Disculpa, en este momento estamos experimentando problemas de conexión. Por favor, intenta de nuevo más tarde o envíanos un correo directamente a creditoinfonavit@asinmex.mx. 🙏";
+        return `[ERROR DEBUG]: ${error.message}`;
     }
 }
 
