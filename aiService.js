@@ -1,10 +1,6 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 require('dotenv').config();
 
-// Inicializamos la API con la llave provista
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
-
 // Prompt del Sistema que define la personalidad y conocimiento del Chatbot
 const SYSTEM_PROMPT = `
 Eres el Asistente Virtual Oficial de ASINMEX (Asesores Intermediarios de México).
@@ -30,6 +26,13 @@ INSTRUCCIONES DE COMPORTAMIENTO:
 5. Mantén tus respuestas muy breves y directas, adaptadas para un widget de chat. Usa emojis ocasionalmente (🏠, ✨, 📱).
 `;
 
+// Inicializamos la API con la llave provista
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const model = genAI.getGenerativeModel({ 
+    model: "gemini-2.5-flash",
+    systemInstruction: SYSTEM_PROMPT
+});
+
 // Mantenemos un registro básico de sesiones en memoria (En producción usarías Redis o una Base de Datos)
 const chatSessions = new Map();
 
@@ -43,18 +46,8 @@ async function processChatMessage(sessionId, message) {
     let chat = chatSessions.get(sessionId);
 
     if (!chat) {
-        // Inicializar un nuevo chat con la instrucción de sistema
+        // Inicializar un nuevo chat limpio con la instrucción de sistema integrada
         chat = model.startChat({
-            history: [
-                {
-                    role: "user",
-                    parts: [{ text: "SYSTEM PROMPT (Acata estas instrucciones): " + SYSTEM_PROMPT }],
-                },
-                {
-                    role: "model",
-                    parts: [{ text: "Entendido. Actuaré como el Asistente Virtual Oficial de ASINMEX siguiendo las directrices." }],
-                },
-            ],
             generationConfig: {
                 maxOutputTokens: 250,
                 temperature: 0.3,
