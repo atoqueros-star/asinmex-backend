@@ -41,7 +41,8 @@ const chatSessions = new Map();
 async function processChatMessage(sessionId, message) {
     let session = chatSessions.get(sessionId);
 
-    if (!session) {
+    // Si la sesión no existe o es del formato viejo, la inicializamos correctamente
+    if (!session || !session.modelName) {
         session = {
             modelName: "gemini-2.5-flash",
             chat: null
@@ -110,7 +111,7 @@ async function processChatMessage(sessionId, message) {
  */
 async function extractLeadDataFromHistory(sessionId) {
     const session = chatSessions.get(sessionId);
-    if (!session || !session.chat) return {};
+    if (!session || !session.modelName || !session.chat) return {};
 
     try {
         // Obtener historial de la conversación actual
