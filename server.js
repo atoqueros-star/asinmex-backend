@@ -3,7 +3,7 @@ const cors = require('cors');
 require('dotenv').config();
 
 const { processChatMessage, extractLeadDataFromHistory } = require('./aiService');
-const { sendLeadEmail } = require('./emailService');
+const { sendLeadEmail, sendConversationEmail } = require('./emailService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -49,6 +49,27 @@ app.post('/api/chat', async (req, res) => {
     } catch (error) {
         console.error('Error en /api/chat:', error);
         res.status(500).json({ error: 'Hubo un error procesando el mensaje.' });
+    }
+});
+
+// Ruta para exportar la conversación por correo electrónico
+app.post('/api/export', async (req, res) => {
+    const { email, history } = req.body;
+
+    if (!email || !history || !Array.isArray(history)) {
+        return res.status(400).json({ error: 'Faltan parámetros requeridos: email y history (debe ser un arreglo)' });
+    }
+
+    try {
+        const success = await sendConversationEmail(email, history);
+        if (success) {
+            res.json({ success: true, message: 'Historial enviado correctamente.' });
+        } else {
+            res.status(500).json({ error: 'No se pudo enviar el correo de historial.' });
+        }
+    } catch (error) {
+        console.error('Error en /api/export:', error);
+        res.status(500).json({ error: 'Hubo un error interno procesando la exportación.' });
     }
 });
 
