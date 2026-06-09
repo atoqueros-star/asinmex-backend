@@ -53,5 +53,5 @@ app.post('/api/chat', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-    console.log(\`🚀 Servidor de ASINMEX Chatbot corriendo en el puerto \${PORT}\`);
+    console.log(`🚀 Servidor de ASINMEX Chatbot corriendo en el puerto ${PORT}`);
 });

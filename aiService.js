@@ -85,17 +85,17 @@ async function extractLeadDataFromHistory(sessionId) {
     const conversationText = history.map(msg => msg.parts.map(p => p.text).join(" ")).join("\n");
 
     // Hacemos una llamada rápida a la IA para que nos parsee los datos recopilados en JSON
-    const extractPrompt = \`
+    const extractPrompt = `
     Basado en el siguiente historial de conversación, extrae el nombre del cliente, tipo de crédito y número de teléfono. 
     Devuelve ÚNICAMENTE un objeto JSON con las claves: "nombre", "tipoCredito", "telefono". Si falta algo, pon "No provisto".
     
     HISTORIAL:
-    \${conversationText}
-    \`;
+    ${conversationText}
+    `;
 
     try {
         const result = await model.generateContent(extractPrompt);
-        const responseText = result.response.text().replace(/\`\`\`json/g, '').replace(/\`\`\`/g, '').trim();
+        const responseText = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
         const leadData = JSON.parse(responseText);
         return leadData;
     } catch (e) {
