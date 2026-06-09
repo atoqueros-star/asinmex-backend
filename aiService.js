@@ -28,10 +28,6 @@ INSTRUCCIONES DE COMPORTAMIENTO:
 
 // Inicializamos la API con la llave provista
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-const model = genAI.getGenerativeModel({ 
-    model: "gemini-2.5-flash",
-    systemInstruction: SYSTEM_PROMPT
-});
 
 // Mantenemos un registro básico de sesiones en memoria (En producción usarías Redis o una Base de Datos)
 const chatSessions = new Map();
@@ -39,61 +35,104 @@ const chatSessions = new Map();
 /**
  * Procesa el mensaje del usuario y devuelve la respuesta del Chatbot
  * @param {string} sessionId - ID único para mantener la memoria de la conversación
- * @param {string} message - Mensaje del usuario
+ * @param {string} message - MEnsaje del usuario
  * @returns {string} - Respuesta de la IA
  */
 async function processChatMessage(sessionId, message) {
-    let chat = chatSessions.get(sessionId);
+    let session = chatSessions.get(sessionId);
 
-    if (!chat) {
-        // Inicializar un nuevo chat limpio con la instrucción de sistema integrada
-        chat = model.startChat({
+    if (!session) {
+        session = {
+            modelName: "gemini-2.5-flash",
+            chat: null
+        };
+        chatSessions.set(sessionId, session);
+    }
+
+    if (!session.chat) {
+        const modelInstance = genAI.getGenerativeModel({ 
+            model: session.modelName,
+            systemInstruction: SYSTEM_PROMPT
+        });
+        session.chat = modelInstance.startChat({
             generationConfig: {
                 maxOutputTokens: 250,
                 temperature: 0.3,
             },
         });
-        chatSessions.set(sessionId, chat);
     }
 
     try {
-        const result = await chat.sendMessage(message);
+        const result = await session.chat.sendMessage(message);
         const responseText = result.response.text();
         return responseText;
     } catch (error) {
-        console.error("Error en Gemini API:", error);
-        return `[ERROR DEBUG]: ${error.message}`;
+        console.error(`Error en Gemini API con modelo ${session.modelName}:`, error);
+
+        // Si falla (por 503 Service Unavailable, 429, etc.), intentamos con el modelo alternativo
+        const fallbackModel = session.modelName === "gemini-2.5-flash" ? "gemini-3.5-flash" : "gemini-2.5-flash";
+        console.log(`Intentando cambiar al modelo de respaldo: ${fallbackModel}`);
+
+        try {
+            // Obtenemos el historial acumulado para no perder el contexto del usuario
+            const history = await session.chat.getHistory();
+            
+            const fallbackModelInstance = genAI.getGenerativeModel({ 
+                model: fallbackModel,
+                systemInstruction: SYSTEM_PROMPT
+            });
+            
+            const newChat = fallbackModelInstance.startChat({
+                history: history, // Importamos el historial previo
+                generationConfig: {
+                    maxOutputTokens: 250,
+                    temperature: 0.3,
+                },
+            });
+
+            // Guardamos el nuevo estado de la sesión
+            session.modelName = fallbackModel;
+            session.chat = newChat;
+
+            // Reintentamos enviar el mensaje del usuario
+            const result = await newChat.sendMessage(message);
+            const responseText = result.response.text();
+            return responseText;
+        } catch (fallbackError) {
+            console.error("Error también en el modelo alternativo:", fallbackError);
+            return `[ERROR DEBUG]: ${error.message} | Respaldo: ${fallbackError.message}`;
+        }
     }
 }
 
 /**
  * Función auxiliar para extraer datos del historial de chat cuando el lead se completa.
- * En un sistema avanzado, le pediríamos a la propia IA que extraiga un JSON de la conversación.
  */
 async function extractLeadDataFromHistory(sessionId) {
-    const chat = chatSessions.get(sessionId);
-    if (!chat) return {};
-
-    // Obtener historial de la conversación actual
-    const history = await chat.getHistory();
-    const conversationText = history.map(msg => msg.parts.map(p => p.text).join(" ")).join("\n");
-
-    // Hacemos una llamada rápida a la IA para que nos parsee los datos recopilados en JSON
-    const extractPrompt = `
-    Basado en el siguiente historial de conversación, extrae el nombre del cliente, tipo de crédito y número de teléfono. 
-    Devuelve ÚNICAMENTE un objeto JSON con las claves: "nombre", "tipoCredito", "telefono". Si falta algo, pon "No provisto".
-    
-    HISTORIAL:
-    ${conversationText}
-    `;
+    const session = chatSessions.get(sessionId);
+    if (!session || !session.chat) return {};
 
     try {
-        const result = await model.generateContent(extractPrompt);
+        // Obtener historial de la conversación actual
+        const history = await session.chat.getHistory();
+        const conversationText = history.map(msg => msg.parts.map(p => p.text).join(" ")).join("\n");
+
+        const extractPrompt = `
+        Basado en el siguiente historial de conversación, extrae el nombre del cliente, tipo de crédito y número de teléfono. 
+        Devuelve ÚNICAMENTE un objeto JSON con las claves: "nombre", "tipoCredito", "telefono". Si falta algo, pon "No provisto".
+        
+        HISTORIAL:
+        ${conversationText}
+        `;
+
+        // Usamos el modelo que haya resultado exitoso para esta sesión
+        const modelInstance = genAI.getGenerativeModel({ model: session.modelName });
+        const result = await modelInstance.generateContent(extractPrompt);
         const responseText = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
         const leadData = JSON.parse(responseText);
         return leadData;
     } catch (e) {
-        console.error("Error extrayendo JSON:", e);
+        console.error("Error extrayendo JSON de lead:", e);
         return { error: "No se pudieron parsear los datos correctamente." };
     }
 }
