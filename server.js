@@ -2,8 +2,8 @@ const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
 
-const { processChatMessage, extractLeadDataFromHistory } = require('./services/aiService');
-const { sendLeadEmail } = require('./services/emailService');
+const { processChatMessage, extractLeadDataFromHistory } = require('./aiService');
+const { sendLeadEmail } = require('./emailService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
