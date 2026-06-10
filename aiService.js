@@ -22,13 +22,12 @@ IMPORTANTE: Si el usuario te saluda, no ha elegido opción o escribe algo no rel
 1) 🔍 Busco Crédito (Ruta B2C - Cliente Final):
    - Tu objetivo es recopilar los siguientes datos de forma conversacional, paso a paso (nunca los pidas todos juntos):
      * Nombre completo.
-     * Tipo de crédito que busca (INFONAVIT, FOVISSSTE o Bancario).
-     * Teléfono o WhatsApp de contacto.
-   - Una vez obtenidos estos 3 datos:
-     * Agradécele amablemente.
-     * Dile que un asesor certificado lo contactará pronto.
-     * Invítalo con entusiasmo a agendar directamente su videollamada de asesoría gratuita de 30 minutos ingresando a nuestra agenda oficial de Google Calendar: https://calendar.app.google/ebWvUTZsjkoLFeDEA
-     * Emite el código oculto al final de tu mensaje: [LEAD_COMPLETO_LISTO]
+     * Tipo de crédito que busca (BANCARIO, INFONAVIT, FOVISSSTE, COFINAVIT u otro).
+   - Dependiendo del tipo de crédito seleccionado, actúa bajo las siguientes reglas estrictas:
+     * Si elige BANCARIO: Detén el perfilamiento de inmediato, agradécele y mándalo DIRECTAMENTE a realizar su precalificación bancaria en nuestro simulador oficial ingresando a este enlace: https://socasesores.com/simulador-credito-hipotecario/?q=M8HJV. Emite el código [LEAD_COMPLETO_LISTO] al final de tu respuesta para registrar el lead.
+     * Si elige INFONAVIT: Solicita su número de Teléfono o WhatsApp. Continúa perfilando al cliente y, al terminar, indícale amablemente que puede agendar su cita de asesoría online ingresando a nuestro Google Calendar: https://calendar.app.google/ebWvUTZsjkoLFeDEA o esperar a que un asesor humano lo atienda directamente por chat. Emite el código [LEAD_COMPLETO_LISTO].
+     * Si elige FOVISSSTE: Explícale brevemente que los trámites de FOVISSSTE Tradicional se operan a través de la SOFOM DECAPITAL BENITO JUÁREZ. Solicita su número de Teléfono/WhatsApp y dile que puede enviar sus documentos a creditofovissste@asinmex.mx o bien agendar su videollamada de asesoría gratuita en nuestro calendario: https://calendar.app.google/ebWvUTZsjkoLFeDEA. Emite el código [LEAD_COMPLETO_LISTO].
+     * Si elige COFINAVIT u otro: Solicita su número de Teléfono o WhatsApp. Explícale que al ser un crédito COFINAVIT se requiere un perfilamiento especializado con la participación de dos o más especialistas. Por ello, es necesario que agende su cita de videollamada de asesoría ingresando a nuestro calendario: https://calendar.app.google/ebWvUTZsjkoLFeDEA. Emite el código [LEAD_COMPLETO_LISTO].
 
 2) 🏢 Soy Inmobiliaria o 3) 🤝 Busco Alianza (Ruta B2B - Profesionales y Socios):
    - Tu objetivo es explicar brevemente y con entusiasmo la Iniciativa ASINMEX (Red de Alianzas) y recopilar de forma conversacional, paso a paso:
@@ -98,7 +97,7 @@ async function processChatMessage(sessionId, message) {
         console.error(`Error en Gemini API con modelo ${session.modelName}:`, error);
 
         // Si falla (por 503 Service Unavailable, 429, etc.), intentamos con el modelo alternativo
-        const fallbackModel = session.modelName === "gemini-2.5-flash" ? "gemini-1.5-flash" : "gemini-2.5-flash";
+        const fallbackModel = session.modelName === "gemini-2.5-flash" ? "gemini-3.5-flash" : "gemini-2.5-flash";
         console.log(`Intentando cambiar al modelo de respaldo: ${fallbackModel}`);
 
         try {
