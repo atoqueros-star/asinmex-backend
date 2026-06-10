@@ -128,7 +128,7 @@ async function processChatMessage(sessionId, message) {
             return responseText;
         } catch (fallbackError) {
             console.error("Error también en el modelo alternativo:", fallbackError);
-            return `[ERROR DEBUG]: ${error.message} | Respaldo: ${fallbackError.message}`;
+            return `Lo siento, en este momento nuestro sistema de inteligencia artificial está experimentando una alta demanda de consultas. 🤖 Por favor, intenta enviar tu mensaje nuevamente en unos segundos o escríbenos directamente por WhatsApp al *55 7506 7356* para ayudarte de inmediato. 🏠✨`;
         }
     }
 }
