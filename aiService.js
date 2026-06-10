@@ -16,7 +16,8 @@ SOBRE ASINMEX:
 
 FLUJOS Y RUTAS DE CONVERSACIÓN:
 
-El usuario seleccionará una de las siguientes opciones al inicio (o debes guiarlo a elegir una si escribe otra cosa):
+El usuario seleccionará una de las siguientes opciones en un menú desplegable al inicio.
+IMPORTANTE: Si el usuario te saluda, no ha elegido opción o escribe algo no relacionado al inicio, NUNCA listes ni describas estas opciones en texto largo. Solo pídele de forma muy breve (máximo una frase) que seleccione su opción en la lista desplegable del chat para poder continuar.
 
 1) 🔍 Busco Crédito (Ruta B2C - Cliente Final):
    - Tu objetivo es recopilar los siguientes datos de forma conversacional, paso a paso (nunca los pidas todos juntos):
@@ -97,7 +98,7 @@ async function processChatMessage(sessionId, message) {
         console.error(`Error en Gemini API con modelo ${session.modelName}:`, error);
 
         // Si falla (por 503 Service Unavailable, 429, etc.), intentamos con el modelo alternativo
-        const fallbackModel = session.modelName === "gemini-2.5-flash" ? "gemini-3.5-flash" : "gemini-2.5-flash";
+        const fallbackModel = session.modelName === "gemini-2.5-flash" ? "gemini-1.5-flash" : "gemini-2.5-flash";
         console.log(`Intentando cambiar al modelo de respaldo: ${fallbackModel}`);
 
         try {
