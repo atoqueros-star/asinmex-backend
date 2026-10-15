@@ -2,38 +2,29 @@ const { test, mock } = require('node:test');
 const assert = require('node:assert/strict');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 
-test('keeps the last complete conversation when the provider truncates, blocks or fails', async () => {
+test('stateless conversations ignore duplicate IDs; truncated, blocked and failed responses never succeed', async () => {
     const starts = [];
-    const models = [];
     const results = ['STOP', 'MAX_TOKENS', 'SAFETY', 'THROW', 'STOP'];
-    const stub = mock.method(GoogleGenerativeAI.prototype, 'getGenerativeModel', (options) => {
-        models.push(options);
+    const stub = mock.method(GoogleGenerativeAI.prototype, 'getGenerativeModel', options => {
+        assert.ok(options.systemInstruction.includes('cuatro etapas'));
         return { startChat(config) {
             starts.push(config);
-            let history = [...config.history];
-            return {
-                async getHistory() { return history; },
-                async sendMessage(message) {
-                    const reason = results.shift();
-                    if (reason === 'THROW') throw Object.assign(new Error('provider failure'), { status: 503 });
-                    history.push({ role: 'user', parts: [{ text: message }] }, { role: 'model', parts: [{ text: 'reply' }] });
-                    return { response: { candidates: [{ finishReason: reason }], text: () => reason === 'STOP' ? 'Respuesta completa.' : '¡Claro que sí! Atend' } };
-                },
-            };
+            return { async sendMessage(message, requestOptions) {
+                assert.equal(requestOptions.timeout, 20000);
+                const reason = results.shift();
+                if (reason === 'THROW') throw new Error('provider failure');
+                return { response: { candidates: [{ finishReason: reason }], text: () => reason === 'STOP' ? 'Respuesta completa.' : '¡Claro que sí! Atend' } };
+            } };
         } };
     });
-    const log = mock.method(console, 'warn', () => {});
     try {
         const { processChatMessage } = require('./aiService');
-        assert.equal(await processChatMessage('qa-only-session', 'Fovissste'), 'Respuesta completa.');
-        for (const message of ['costo', 'cobertura', 'horario']) {
-            const reply = await processChatMessage('qa-only-session', message);
-            assert.match(reply, /No pude completar/);
-            assert.doesNotMatch(reply, /Atend|LEAD_COMPLETO_LISTO/);
-        }
-        assert.equal(await processChatMessage('qa-only-session', 'Gracias'), 'Respuesta completa.');
-        assert.deepEqual(starts.map(s => s.history.length), [0, 2, 2, 2, 2]);
-        assert.equal(models.length, 5); // No unverified fallback or billing retry loop.
-        assert.ok(models.every(m => m.systemInstruction.includes('cuatro etapas')));
-    } finally { stub.mock.restore(); log.mock.restore(); }
+        const history = [{ sender: 'user', text: 'Fovissste' }, { sender: 'bot', text: 'Primera asesoría gratuita.' }];
+        assert.equal(await processChatMessage('same-id', 'costos', history), 'Respuesta completa.');
+        for (const message of ['cobertura', 'horario', 'reintento']) await assert.rejects(processChatMessage('same-id', message));
+        assert.equal(await processChatMessage('same-id', 'otra persona'), 'Respuesta completa.');
+        assert.deepEqual(starts.map(s => s.history.length), [2, 0, 0, 0, 0]);
+        assert.equal(starts[0].history[0].parts[0].text, 'Fovissste');
+        assert.equal(history.length, 2);
+    } finally { stub.mock.restore(); }
 });

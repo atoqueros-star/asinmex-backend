@@ -1,148 +1,59 @@
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
+const { processChatMessage } = require('./aiService');
 
-const { processChatMessage, extractLeadDataFromHistory } = require('./aiService');
-const { sendLeadEmail, sendConversationEmail } = require('./emailService');
+const VERSION = 'chat-2026-10-15.2';
+const ORIGINS = new Set(['https://asinmex.mx', 'https://www.asinmex.mx', 'https://id-preview--78a6bffd-41aa-458e-9da6-95f155762b01.lovable.app']);
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Configuración de Middlewares
-app.use(cors()); // Permite peticiones desde el frontend (Lovable)
-app.use(express.json());
-
-// Ruta de salud del servidor (útil para plataformas gratuitas como Render)
-app.get('/health', (req, res) => {
-    res.status(200).json({ status: 'OK', message: 'ASINMEX Chatbot Backend is running' });
-});
-
-// Ruta principal del Chat
-app.post('/api/chat', async (req, res) => {
-    const { sessionId, message } = req.body;
-
-    if (!sessionId || !message) {
-        return res.status(400).json({ error: 'Faltan parámetros requeridos: sessionId y message' });
+function validHistory(history) {
+    if (!Array.isArray(history) || history.length > 12) return false;
+    let total = 0;
+    for (let i = 0; i < history.length; i++) {
+        const item = history[i];
+        if (!item || item.sender !== (i % 2 === 0 ? 'user' : 'bot') || typeof item.text !== 'string' || !item.text.trim() || item.text.length > 2000) return false;
+        total += item.text.length;
     }
+    return history.length % 2 === 0 && total <= 12000;
+}
 
-    // Prevención de abuso de carga (Payload Abuse)
-    if (typeof message !== 'string' || message.length > 1000) {
-        return res.status(400).json({ error: 'El mensaje excede el tamaño máximo permitido de 1000 caracteres.' });
-    }
+function createApp({ processMessage = processChatMessage, configured = () => Boolean(process.env.GEMINI_API_KEY?.trim()), now = Date.now, maxRequests = 30, maxConcurrent = 3 } = {}) {
+    const app = express();
+    app.disable('x-powered-by');
+    app.use((req, res, next) => { res.set('Cache-Control', 'no-store'); next(); });
+    app.get('/health', (req, res) => res.status(configured() ? 200 : 503).json({ status: configured() ? 'OK' : 'UNAVAILABLE', version: VERSION, runtime: process.versions.node }));
+    // Origin restrictions reduce browser abuse, but are not authentication.
+    app.use('/api/chat', (req, res, next) => ORIGINS.has(req.get('Origin')) ? next() : res.status(403).json({ error: 'Origen no permitido.' }));
+    app.use(cors({ origin: [...ORIGINS], methods: ['POST'], allowedHeaders: ['Content-Type'], maxAge: 600 }));
+    app.use(express.json({ limit: '64kb' }));
+    let windowStart = now();
+    let requests = 0;
+    let active = 0;
+    app.post('/api/chat', async (req, res) => {
+        if (!req.is('application/json')) return res.status(415).json({ error: 'Se requiere JSON.' });
+        const { message, history = [] } = req.body || {};
+        if (typeof message !== 'string' || !message.trim() || message.length > 1000 || !validHistory(history)) return res.status(400).json({ error: 'Mensaje o historial inválido.' });
+        if (!configured()) return res.status(503).json({ error: 'El asistente no está disponible. Puedes contactar al equipo por WhatsApp.' });
+        const time = now();
+        if (time - windowStart >= 60000) { requests = 0; windowStart = time; }
+        if (requests >= maxRequests || active >= maxConcurrent) return res.set('Retry-After', '60').status(429).json({ error: 'Hay varias consultas en curso. Intenta de nuevo en un minuto o usa WhatsApp.' });
+        requests++;
+        active++;
+        try {
+            // No server conversation store and no model-triggered side effects.
+            const reply = await processMessage(null, message.trim(), history);
+            res.json({ reply });
+        } catch {
+            res.status(503).json({ error: 'No se pudo completar la respuesta. Puedes contactar al equipo por WhatsApp.' });
+        } finally { active--; }
+    });
+    app.use((error, req, res, next) => {
+        if (error.type === 'entity.too.large') return res.status(413).json({ error: 'La consulta es demasiado extensa.' });
+        if (error instanceof SyntaxError) return res.status(400).json({ error: 'JSON inválido.' });
+        res.status(500).json({ error: 'No se pudo procesar la consulta.' });
+    });
+    return app;
+}
 
-    try {
-        // Procesamos el mensaje con la IA
-        let reply = await processChatMessage(sessionId, message);
-
-        // Verificamos si el bot ha completado la recolección de datos
-        if (reply.includes('[LEAD_COMPLETO_LISTO]')) {
-            // Limpiamos el mensaje para que el usuario no vea el código interno
-            reply = reply.replace('[LEAD_COMPLETO_LISTO]', '').trim();
-
-            // Extraer datos usando la misma IA
-            const leadData = await extractLeadDataFromHistory(sessionId);
-            
-            // Enviamos el correo de forma asíncrona
-            sendLeadEmail(leadData)
-                .then(success => {
-                    if(success) console.log('✅ Lead enviado a ASINMEX');
-                    else console.error('❌ Falló el envío del lead');
-                });
-        }
-
-        res.json({ reply });
-    } catch (error) {
-        console.error('Error en /api/chat:', error);
-        res.status(500).json({ error: 'Hubo un error procesando el mensaje.' });
-    }
-});
-
-// Ruta para exportar la conversación por correo electrónico
-app.post('/api/export', async (req, res) => {
-    const { email, history } = req.body;
-
-    if (!email || !history || !Array.isArray(history)) {
-        return res.status(400).json({ error: 'Faltan parámetros requeridos: email y history (debe ser un arreglo)' });
-    }
-
-    // Prevención de abuso de carga (Payload Abuse)
-    if (typeof email !== 'string' || email.length > 254) {
-        return res.status(400).json({ error: 'El correo electrónico excede el tamaño máximo permitido.' });
-    }
-
-    if (history.length > 50) {
-        return res.status(400).json({ error: 'El historial excede la cantidad máxima permitida de 50 mensajes.' });
-    }
-
-    for (const msg of history) {
-        if (!msg || typeof msg.text !== 'string' || msg.text.length > 1000) {
-            return res.status(400).json({ error: 'Uno o más mensajes del historial exceden el tamaño máximo permitido de 1000 caracteres.' });
-        }
-    }
-
-    try {
-        const success = await sendConversationEmail(email, history);
-        if (success) {
-            res.json({ success: true, message: 'Historial enviado correctamente.' });
-        } else {
-            res.status(500).json({ error: 'No se pudo enviar el correo de historial.' });
-        }
-    } catch (error) {
-        console.error('Error en /api/export:', error);
-        res.status(500).json({ error: 'Hubo un error interno procesando la exportación.' });
-    }
-});
-
-// Ruta de diagnóstico para verificar el estado de la API Key de Google
-app.get('/api/diagnose', async (req, res) => {
-    try {
-        const apiKey = process.env.GEMINI_API_KEY;
-        if (!apiKey) {
-            return res.status(500).json({ 
-                error: 'GEMINI_API_KEY no está configurada en las variables de entorno de Render.' 
-            });
-        }
-        
-        // Ocultamos la mayor parte del key por seguridad (mostramos los últimos 4 caracteres)
-        const maskedKey = apiKey.length > 8 ? `...${apiKey.slice(-4)}` : 'Muy corta o inválida';
-
-        const { GoogleGenerativeAI } = require("@google/generative-ai");
-        const genAI = new GoogleGenerativeAI(apiKey);
-        
-        const modelsToTest = [
-            "gemini-1.5-flash",
-            "gemini-2.0-flash",
-            "gemini-2.0-flash-lite",
-            "gemini-2.5-flash",
-            "gemini-3.5-flash"
-        ];
-        
-        const testResults = {};
-        for (const modelName of modelsToTest) {
-            try {
-                const model = genAI.getGenerativeModel({ model: modelName });
-                const result = await model.generateContent("Hola");
-                testResults[modelName] = {
-                    success: true,
-                    reply: result.response.text().trim()
-                };
-            } catch (err) {
-                testResults[modelName] = {
-                    success: false,
-                    error: err.message
-                };
-            }
-        }
-
-        res.json({
-            maskedKey,
-            testResults
-        });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-});
-
-app.listen(PORT, () => {
-    console.log(`🚀 Servidor de ASINMEX Chatbot corriendo en el puerto ${PORT}`);
-});
+if (require.main === module) createApp().listen(process.env.PORT || 3000, () => console.log(`ASINMEX ${VERSION} ready`));
+module.exports = { createApp, validHistory, VERSION };

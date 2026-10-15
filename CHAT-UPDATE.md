@@ -1,17 +1,29 @@
-# Corrección del asistente — 2026-10-15
+# Chat ASINMEX — corrección y publicación autorizada, 2026-10-15
 
-Actualiza el contenido al sitio vigente: primera asesoría gratuita, servicios posteriores cotizados, Infonavit/Fovissste en CDMX y Estado de México, cuatro etapas sin garantía de autorización. Responde antes de pedir datos y remite a contacto público sin prometer envío, cita o seguimiento confirmado.
+El asistente responde sobre Infonavit y Fovissste en CDMX y Estado de México, primera asesoría gratuita y costos posteriores por acuerdo. No exige datos personales para orientar, no garantiza crédito ni afirma que una consulta se recibió.
 
-El límite anterior era 250 tokens y cualquier texto devuelto se mostraba como respuesta. Ahora se aceptan únicamente candidatos con `finishReason: STOP` y texto no vacío. Los resultados truncados, bloqueados o fallidos devuelven una alternativa de contacto y no contaminan el historial válido. Para el modelo existente Gemini 2.5 Flash se configura presupuesto de pensamiento 0 y salida máxima de 1536 tokens. Se retira el salto automático a un modelo no validado en el despliegue. `GEMINI_MODEL` es opcional; por defecto conserva `gemini-2.5-flash`.
+## Cambios
 
-Referencias técnicas: [GenerateContent y FinishReason](https://ai.google.dev/api/generate-content), [ThinkingConfig](https://ai.google.dev/api/generate-content#ThinkingConfig). La validez del modelo y las credenciales en producción todavía debe comprobarse; las pruebas usan un proveedor simulado, sin llaves ni envíos.
+- Acepta sólo texto no vacío con `finishReason: STOP`. Presupuesto de salida1536 y pensamiento0 para Gemini2.5 Flash. Sin reintentos facturables ni salto a modelos inventados.
+- Historial enviado por el navegador, máximo6 intercambios completos/12000 caracteres. Sin almacén de conversaciones ni recuperación por sessionId; el identificador heredado se ignora.
+- Solicitud al proveedor abortada por el SDK a20 segundos. Errores503 sin detalles del proveedor; frontend ofrece preguntas frecuentes y WhatsApp.
+- Se retiran rutas públicas de diagnóstico y exportación por correo y toda activación de correo mediante texto del modelo. La interfaz descarga un TXT local.
+- JSON hasta64KB, mensaje hasta1000 caracteres, roles alternados, orígenes exactos de producción y preview. CORS no es autenticación.
+- Protección inicial por proceso:30 consultas/minuto, máximo3 simultáneas,429 con Retry-After. El límite afecta a todos los visitantes de esa instancia y puede rechazar tráfico legítimo. No es cuota persistente/global ni sustituye el presupuesto configurado en el proveedor.
+- `/health` muestra estado de configuración, versión de entrega y versión Node; nunca fragmentos de credenciales.200 indica configuración presente, no una llamada exitosa a Gemini.
 
-Validación: `npm test`, cuatro pruebas con casos de respuesta completa, vacía, MAX_TOKENS, SAFETY, CONTINUATION y fallo de proveedor; comprueba que el historial previo se conserva. `node --check aiService.js` aprobado.
+## Infraestructura comprobada
 
-## Publicación pendiente
+El frontend público apunta a https://asinmex-backend.onrender.com. En los proyectos GCP accesibles no se identificó un servicio de chatbot: ASINMEX contiene gate-servicio/portal-servicio; los otros servicios inventariados pertenecen a VAULT. `universal-thunder-9j1d7` no permitió consultar servicios con la cuenta disponible. No se habilitaron APIs, crearon servicios ni cambiaron secretos/IAM.
 
-El frontend público sigue conectado a `https://asinmex-backend.onrender.com`. El usuario reporta GCP, pero no se identificó su servicio de chatbot. No se despliega esta rama automáticamente ni se crean servicios, cuentas o credenciales. Confirmar proyecto, región, servicio y revisión antes de publicar. Después configurar la URL pública real en `VITE_CHAT_BACKEND_URL` del frontend y recompilar.
+Se autoriza publicar por petición directa del usuario. Backend primero; comprobar versión y respuestas reales antes de publicar el frontend desde Lovable. Volver al commit anterior si la nueva versión falla; no declarar éxito sólo por fusionar una PR.
 
-Este parche no certifica el backend completo para producción: las sesiones siguen en memoria, el endpoint heredado de diagnóstico es público y el envío heredado de correo depende de un marcador generado por el modelo. El nuevo prompt no solicita ese marcador, pero un prompt no es un control de autorización. Antes de abrir campañas, revisar y verificar esos caminos del servidor y la recepción de consultas. No se modificaron aquí IAM, secretos ni los endpoints de correo.
+## Pruebas previas
 
-Costo: el límite mayor puede aumentar tokens por respuesta libre; no hay nuevos reintentos automáticos ni infraestructura contratada. El costo real del proveedor y el servicio GCP siguen sin medirse.
+8 pruebas aprobadas en Node26.3.0: rechazos400/403/413/415/429/503, historial ajeno por mismo ID, errores del proveedor, respuesta cortada, recuperación de concurrencia y rutas retiradas404. Proveedor simulado, sin secretos ni correos. Auditoría independiente identificó y corrigió opciones rápidas ocultas durante espera, enlaces Markdown mal interpretados y un caso de prueba que no aislaba el máximo de historial.
+
+`node regression-mutations.cjs` retiró temporalmente tres controles: finishReason, longitud de historial y configuración obligatoria. Cada mutación dio exit1 en su prueba; restaurados los archivos, las8 pruebas dieron exit0. El script restaura los archivos incluso tras error. Verifica un fallo de prueba, no autorización de producción.
+
+Pendiente al redactar: observar versión/runtime y consultas reales de Render, publicación Lovable y recepción de prospectos. La disponibilidad del control del navegador está bloqueada por un fallo externo de la herramienta; no se atribuye ese bloqueo a ASINMEX.
+
+Costo: preguntas rápidas locales sin IA; consultas libres consumen el modelo existente y pueden gastar más tokens que el límite anterior. Sin nuevo plan contratado. La cuota por proceso no acredita un presupuesto monetario mensual. Antes de anuncios falta verificar recepción real y medición de conversiones con el equipo.
