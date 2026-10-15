@@ -11,6 +11,7 @@ function getCompleteReply(response) {
     if (response?.candidates?.[0]?.finishReason !== 'STOP') {
         const error = new Error('Incomplete provider response');
         error.code = 'INCOMPLETE_REPLY';
+        error.publicCode = response?.candidates?.[0]?.finishReason === 'MAX_TOKENS' ? 'RESPONSE_LIMIT' : 'RESPONSE_UNAVAILABLE';
         throw error;
     }
     const reply = response.text().trim();
