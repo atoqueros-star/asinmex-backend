@@ -44,7 +44,7 @@ function createApp({ processMessage = processChatMessage, configured = () => Boo
             const reply = await processMessage(null, message.trim(), history);
             res.json({ reply });
         } catch (error) {
-            const code = ['RESPONSE_LIMIT', 'RESPONSE_UNAVAILABLE'].includes(error.publicCode) ? error.publicCode : error.status === 429 ? 'PROVIDER_BUSY' : 'PROVIDER_UNAVAILABLE';
+            const code = ['RESPONSE_LIMIT', 'RESPONSE_UNAVAILABLE'].includes(error?.publicCode) ? error.publicCode : error?.status === 429 ? 'PROVIDER_BUSY' : 'PROVIDER_UNAVAILABLE';
             console.warn('ASINMEX chat unavailable:', code);
             res.status(503).json({ error: 'No se pudo completar la respuesta. Puedes contactar al equipo por WhatsApp.', code });
         } finally { active--; }
