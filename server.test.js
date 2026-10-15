@@ -74,3 +74,16 @@ test('rate budget rejects real excess requests, resets, and concurrency is relea
     assert.doesNotMatch(await failed.text(), /secret/);
     assert.equal((await second.post({ message: 'tercera' })).status, 200);
 });
+
+test('unknown error shapes stay unavailable and never expose arbitrary provider data', async t => {
+    const errors = [null, undefined, { publicCode: 'PRIVATE_TEST_VALUE', message: 'PRIVATE_TEST_VALUE' }, { publicCode: 'RESPONSE_LIMIT' }, { publicCode: 'RESPONSE_UNAVAILABLE' }, { status: 429 }];
+    const expected = ['PROVIDER_UNAVAILABLE', 'PROVIDER_UNAVAILABLE', 'PROVIDER_UNAVAILABLE', 'RESPONSE_LIMIT', 'RESPONSE_UNAVAILABLE', 'PROVIDER_BUSY'];
+    const { post } = await fixture(t, { processMessage: async () => { throw errors.shift(); } });
+    for (const code of expected) {
+        const response = await post({ message: 'prueba' });
+        assert.equal(response.status, 503);
+        const data = await response.json();
+        assert.equal(data.code, code);
+        assert.doesNotMatch(JSON.stringify(data), /PRIVATE_TEST_VALUE/);
+    }
+});
