@@ -1,6 +1,7 @@
 const fs = require('node:fs');
 const { spawnSync } = require('node:child_process');
 const cases = [
+ ['server.js', 'if (time < providerBlockedUntil)', 'if (false)', 'server.test.js', 'provider backoff'],
  ['replyPolicy.js', "response?.candidates?.[0]?.finishReason !== 'STOP'", 'false', 'replyPolicy.test.js', 'truncated output'],
  ['server.js', 'history.length > 12', 'false', 'server.test.js', 'history size'],
  ['server.js', 'if (!configured()) return', 'if (false) return', 'server.test.js', 'missing configuration'],

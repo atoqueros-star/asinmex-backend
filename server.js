@@ -3,7 +3,7 @@ const cors = require('cors');
 require('dotenv').config();
 const { processChatMessage } = require('./aiService');
 
-const VERSION = 'chat-2026-10-15.2';
+const VERSION = 'chat-2026-10-15.3';
 const ORIGINS = new Set(['https://asinmex.mx', 'https://www.asinmex.mx', 'https://id-preview--78a6bffd-41aa-458e-9da6-95f155762b01.lovable.app']);
 
 function validHistory(history) {
@@ -29,12 +29,16 @@ function createApp({ processMessage = processChatMessage, configured = () => Boo
     let windowStart = now();
     let requests = 0;
     let active = 0;
+    // Process-local backoff limits repeated upstream calls; it does not increase quota.
+    let providerBlockedUntil = 0;
+    const busy = (res, time) => res.set('Retry-After', String(Math.max(1, Math.ceil((providerBlockedUntil - time) / 1000)))).status(429).json({ error: 'Las respuestas personalizadas están temporalmente ocupadas. Usa las opciones rápidas o WhatsApp.', code: 'PROVIDER_BUSY' });
     app.post('/api/chat', async (req, res) => {
         if (!req.is('application/json')) return res.status(415).json({ error: 'Se requiere JSON.' });
         const { message, history = [] } = req.body || {};
         if (typeof message !== 'string' || !message.trim() || message.length > 1000 || !validHistory(history)) return res.status(400).json({ error: 'Mensaje o historial inválido.' });
         if (!configured()) return res.status(503).json({ error: 'El asistente no está disponible. Puedes contactar al equipo por WhatsApp.' });
         const time = now();
+        if (time < providerBlockedUntil) return busy(res, time);
         if (time - windowStart >= 60000) { requests = 0; windowStart = time; }
         if (requests >= maxRequests || active >= maxConcurrent) return res.set('Retry-After', '60').status(429).json({ error: 'Hay varias consultas en curso. Intenta de nuevo en un minuto o usa WhatsApp.' });
         requests++;
@@ -46,6 +50,10 @@ function createApp({ processMessage = processChatMessage, configured = () => Boo
         } catch (error) {
             const code = ['RESPONSE_LIMIT', 'RESPONSE_UNAVAILABLE'].includes(error?.publicCode) ? error.publicCode : error?.status === 429 ? 'PROVIDER_BUSY' : 'PROVIDER_UNAVAILABLE';
             console.warn('ASINMEX chat unavailable:', code);
+            if (code === 'PROVIDER_BUSY') {
+                providerBlockedUntil = Math.max(providerBlockedUntil, now() + 60000);
+                return busy(res, now());
+            }
             res.status(503).json({ error: 'No se pudo completar la respuesta. Puedes contactar al equipo por WhatsApp.', code });
         } finally { active--; }
     });

@@ -81,9 +81,33 @@ test('unknown error shapes stay unavailable and never expose arbitrary provider 
     const { post } = await fixture(t, { processMessage: async () => { throw errors.shift(); } });
     for (const code of expected) {
         const response = await post({ message: 'prueba' });
-        assert.equal(response.status, 503);
+        assert.equal(response.status, code === 'PROVIDER_BUSY' ? 429 : 503);
         const data = await response.json();
         assert.equal(data.code, code);
         assert.doesNotMatch(JSON.stringify(data), /PRIVATE_TEST_VALUE/);
     }
+});
+
+test('provider quota failure backs off without extra calls and recovers after cooldown', async t => {
+    let time = 0;
+    let calls = 0;
+    const { post } = await fixture(t, { now: () => time, processMessage: async () => {
+        calls++;
+        if (calls === 1) throw { status: 429, message: 'SECRET upstream detail' };
+        return 'Recuperado';
+    } });
+    const first = await post({ message: 'prueba' });
+    assert.equal(first.status, 429);
+    assert.equal(first.headers.get('retry-after'), '60');
+    assert.doesNotMatch(await first.text(), /SECRET/);
+    time = 30000;
+    const second = await post({ message: 'otra' });
+    assert.equal(second.status, 429);
+    assert.equal(second.headers.get('retry-after'), '30');
+    assert.equal(calls, 1);
+    time = 60000;
+    const recovered = await post({ message: 'otra' });
+    assert.equal(recovered.status, 200);
+    assert.equal((await recovered.json()).reply, 'Recuperado');
+    assert.equal(calls, 2);
 });
